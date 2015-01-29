@@ -39,6 +39,8 @@
 #include "intreadwrite.h"
 #include "mem.h"
 
+#define MALLOC_PREFIX my_
+
 #ifdef MALLOC_PREFIX
 
 #define malloc         AV_JOIN(MALLOC_PREFIX, malloc)
@@ -164,8 +166,7 @@ void *av_realloc_array(void *ptr, size_t nmemb, size_t size)
     return av_realloc(ptr, nmemb * size);
 }
 
-int av_reallocp_array(void *ptr, size_t nmemb, size_t size)
-{
+int av_reallocp_array(void *ptr, size_t nmemb, size_t size) {
     void **ptrptr = ptr;
     void *ret;
     if (!size || nmemb >= INT_MAX / size)
@@ -183,15 +184,14 @@ int av_reallocp_array(void *ptr, size_t nmemb, size_t size)
     return 0;
 }
 
-void av_free(void *ptr)
-{
+void av_free(void *ptr) {
 #if CONFIG_MEMALIGN_HACK
-    if (ptr)
-        free((char *)ptr - ((char *)ptr)[-1]);
+	if (ptr)
+		free((char *)ptr - ((char *)ptr)[-1]);
 #elif HAVE_ALIGNED_MALLOC
-    _aligned_free(ptr);
+	_aligned_free(ptr);
 #else
-    free(ptr);
+	free(ptr);
 #endif
 }
 

@@ -21,6 +21,8 @@
 
 #include "config.h"
 
+#include "avconv_ctx.h"
+
 #include <stdint.h>
 #include <stdio.h>
 
@@ -230,6 +232,8 @@ typedef struct InputStream {
     int64_t       next_dts;
     /* dts of the last packet read for this stream */
     int64_t       last_dts;
+		int64_t				last_pts;
+
     PtsCorrectionContext pts_ctx;
     double ts_scale;
     int showed_multi_packet_warning;
@@ -371,40 +375,40 @@ typedef struct OutputFile {
     int shortest;
 } OutputFile;
 
-extern InputStream **input_streams;
-extern int        nb_input_streams;
-extern InputFile   **input_files;
-extern int        nb_input_files;
+extern __thread InputStream **input_streams;
+extern __thread int        nb_input_streams;
+extern __thread InputFile   **input_files;
+extern __thread int        nb_input_files;
 
-extern OutputStream **output_streams;
-extern int         nb_output_streams;
-extern OutputFile   **output_files;
-extern int         nb_output_files;
+extern __thread OutputStream **output_streams;
+extern __thread int         nb_output_streams;
+extern __thread OutputFile   **output_files;
+extern __thread int         nb_output_files;
 
-extern FilterGraph **filtergraphs;
-extern int        nb_filtergraphs;
+extern __thread FilterGraph **filtergraphs;
+extern __thread int        nb_filtergraphs;
 
-extern char *vstats_filename;
+extern __thread char *vstats_filename;
 
-extern float audio_drift_threshold;
-extern float dts_delta_threshold;
+extern __thread float audio_drift_threshold;
+extern __thread float dts_delta_threshold;
 
-extern int audio_volume;
-extern int audio_sync_method;
-extern int video_sync_method;
-extern int do_benchmark;
-extern int do_deinterlace;
-extern int do_hex_dump;
-extern int do_pkt_dump;
-extern int copy_ts;
-extern int copy_tb;
-extern int exit_on_error;
-extern int print_stats;
-extern int qp_hist;
+extern __thread int audio_volume;
+extern __thread int audio_sync_method;
+extern __thread int video_sync_method;
+extern __thread int do_benchmark;
+extern __thread int do_deinterlace;
+extern __thread int do_hex_dump;
+extern __thread int do_pkt_dump;
+extern __thread int copy_ts;
+extern __thread int copy_tb;
+extern __thread int exit_on_error;
+extern __thread int print_stats;
+extern __thread int qp_hist;
 
 extern const AVIOInterruptCB int_cb;
 
-extern const OptionDef options[];
+extern __thread OptionDef options[];
 
 extern const HWAccel hwaccels[];
 
@@ -427,5 +431,10 @@ int avconv_parse_options(int argc, char **argv);
 int vdpau_init(AVCodecContext *s);
 int dxva2_init(AVCodecContext *s);
 int vda_init(AVCodecContext *s);
+
+void avconv_cleanup(int ret);
+void avconv_conv(int argc, char **argv);
+
+#define dbp(...)
 
 #endif /* AVCONV_H */

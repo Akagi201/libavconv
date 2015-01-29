@@ -61,8 +61,8 @@ COMPILE_HOSTC = $(call COMPILE,HOSTCC)
 %.c %.h: TAG = GEN
 
 AVPROGS-$(CONFIG_AVCONV)   += avconv
-AVPROGS-$(CONFIG_AVPLAY)   += avplay
-AVPROGS-$(CONFIG_AVPROBE)  += avprobe
+#AVPROGS-$(CONFIG_AVPLAY)   += avplay
+#AVPROGS-$(CONFIG_AVPROBE)  += avprobe
 
 AVPROGS    := $(AVPROGS-yes:%=%$(EXESUF))
 PROGS      += $(AVPROGS)
@@ -72,7 +72,8 @@ ALLAVPROGS  = $(AVBASENAMES:%=%$(EXESUF))
 
 $(foreach prog,$(AVBASENAMES),$(eval OBJS-$(prog) += cmdutils.o))
 
-OBJS-avconv                   += avconv_opt.o avconv_filter.o
+LDFLAGS-avconv								+= -pthread
+OBJS-avconv                   += avconv_opt.o avconv_filter.o avconv_ctx.o
 OBJS-avconv-$(HAVE_VDPAU_X11) += avconv_vdpau.o
 OBJS-avconv-$(HAVE_DXVA2_LIB) += avconv_dxva2.o
 OBJS-avconv-$(CONFIG_VDA)     += avconv_vda.o

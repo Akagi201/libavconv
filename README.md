@@ -1,40 +1,110 @@
-Libav
+Libavconv
 =====
 
-Libav is a collection of libraries and tools to process multimedia content
-such as audio, video, subtitles and related metadata.
+Libavconv is C library functions like `avconv` command.
 
-## Libraries
+ * Easy to use
+ * Zero-copy (no fork)
+ * Simple but useful buffer control
 
-* `libavcodec` provides implementation of a wider range of codecs.
-* `libavformat` implements streaming protocols, container formats and basic I/O access.
-* `libavutil` includes hashers, decompressors and miscellaneous utility functions.
-* `libavfilter` provides a mean to alter decoded Audio and Video through chain of filters.
-* `libavdevice` provides an abstraction to access capture and playback devices.
-* `libavresample` implements audio mixing and resampling routines.
-* `libswscale` implements color conversion and scaling routines.
+### Example
 
-## Tools
+```C
+int main(int argc, char **argv) {
+	int fd_r, fd_w;
+	int turn = 0;
 
-* [avconv](http://libav.org/avconv.html) is a command line toolbox to
-  manipulate, convert and stream multimedia content.
-* [avplay](http://libav.org/avplay.html) is a minimalistic multimedia player.
-* [avprobe](http://libav.org/avprobe.html) is a simple analisys tool to inspect
-  multimedia content.
-* Additional small tools such as `aviocat`, `ismindex` and `qt-faststart`.
+	avconvNewFromArgv(&fd_r, &fd_w, argc, argv);
 
-## Documentation
+	for (;;) {
+		avconvCmd c;
+		avconvRequest req = {};
+		int n;
+		avconvFrame *frame;
 
-The offline documentation is available in the **doc/** directory.
+		// read frame
+		req.frame = 1;
 
-The online documentation is available in the main [website](http://libav.org)
-and in the [wiki](http://wiki.libav.org).
+		// probe every 8 turns
+		req.probe = (turn % 8) == 0;
 
-### Examples
+		// free all buffers every 4 turns
+		// after free frame->buf no longer invalid
+		req.free = (turn % 4) == 0;
 
-Conding examples are available in the **doc/example** directory.
+		c = avconvMakeCmd(AVCONV_REQUEST, &req, sizeof(req));
+		write(fd_w, &c, sizeof(c));
 
-## License
+		if (req.probe) {
+			avconvProbeInfo *pi;
 
-Libav codebase is mainly LGPL-licensed with optional components licensed under
-GPL. Please refer to the LICENSE file for detailed information.
+			for (;;) {
+				n = read(fd_r, &c, sizeof(c));
+				if (n != sizeof(c))
+					goto out;
+				if (c.type == AVCONV_PROBE_END)
+					break;
+
+				pi = (avconvProbeInfo *)c.buf;
+				if (pi->idx == 0)
+					fprintf(stderr, "probe i=%d pos=%f dur=%f\n", 
+							pi->idx, pi->position, pi->duration);
+			}
+		}
+
+		if (req.frame) {
+			n = read(fd_r, &c, sizeof(c));
+			if (n != sizeof(c))
+				goto out;
+
+			frame = (avconvFrame *)c.buf;
+			fprintf(stderr, "frame size=%d\n", frame->size);
+			// handle with frame->buf
+			// ...
+		}
+
+		turn++;
+	}
+
+out:
+	fprintf(stderr, "avconv session closed\n");
+	close(fd_r);
+	close(fd_w);
+
+	sleep(1);
+
+	return 0;
+}
+```
+
+```bash
+
+# use % instead of filename libavconv to handle frames in code 
+$ ./test -i in.mp3 -f s16le %
+
+...
+probe i=0 pos=9.195102 dur=10.031020
+frame size=4608
+frame size=4608
+frame size=4608
+frame size=4608
+frame size=4608
+frame size=4608
+frame size=4608
+frame size=4608
+probe i=0 pos=9.404081 dur=10.031020
+frame size=4608
+frame size=4608
+frame size=4608
+frame size=4608
+frame size=4608
+frame size=4608
+frame size=4608
+frame size=4608
+probe i=0 pos=9.613061 dur=10.031020
+frame size=4608
+...
+
+avconv session closed
+```
+

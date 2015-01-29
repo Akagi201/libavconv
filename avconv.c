@@ -20,6 +20,7 @@
  */
 
 #include "config.h"
+
 #include <ctype.h>
 #include <string.h>
 #include <math.h>
@@ -28,8 +29,11 @@
 #include <signal.h>
 #include <limits.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <limits.h>
 
 #include "libavformat/avformat.h"
+#include "libavformat/url.h"
 #include "libavdevice/avdevice.h"
 #include "libswscale/swscale.h"
 #include "libavresample/avresample.h"
@@ -43,10 +47,8 @@
 #include "libavutil/mathematics.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/avstring.h"
-#include "libavutil/libm.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/time.h"
-#include "libavformat/os_support.h"
 
 # include "libavfilter/avfilter.h"
 # include "libavfilter/buffersrc.h"
@@ -79,68 +81,42 @@
 
 #include "libavutil/avassert.h"
 
+#include "avconv_ctx.h"
+
 const char program_name[] = "avconv";
 const int program_birth_year = 2000;
 
-static FILE *vstats_file;
-
-static int nb_frames_drop = 0;
-
-
+static __thread FILE *vstats_file;
+static __thread int nb_frames_drop = 0;
 
 #if HAVE_PTHREADS
 /* signal to input threads that they should exit; set by the main thread */
-static int transcoding_finished;
+static __thread int transcoding_finished;
 #endif
 
 #define DEFAULT_PASS_LOGFILENAME_PREFIX "av2pass"
 
-InputStream **input_streams = NULL;
-int        nb_input_streams = 0;
-InputFile   **input_files   = NULL;
-int        nb_input_files   = 0;
+__thread InputStream **input_streams = NULL;
+__thread int        nb_input_streams = 0;
+__thread InputFile   **input_files   = NULL;
+__thread int        nb_input_files   = 0;
 
-OutputStream **output_streams = NULL;
-int         nb_output_streams = 0;
-OutputFile   **output_files   = NULL;
-int         nb_output_files   = 0;
+__thread OutputStream **output_streams = NULL;
+__thread int         nb_output_streams = 0;
+__thread OutputFile   **output_files   = NULL;
+__thread int         nb_output_files   = 0;
 
-FilterGraph **filtergraphs;
-int        nb_filtergraphs;
-
-static void term_exit(void)
-{
-    av_log(NULL, AV_LOG_QUIET, "");
-}
-
-static volatile int received_sigterm = 0;
-static volatile int received_nb_signals = 0;
-
-static void
-sigterm_handler(int sig)
-{
-    received_sigterm = sig;
-    received_nb_signals++;
-    term_exit();
-}
-
-static void term_init(void)
-{
-    signal(SIGINT , sigterm_handler); /* Interrupt (ANSI).    */
-    signal(SIGTERM, sigterm_handler); /* Termination (ANSI).  */
-#ifdef SIGXCPU
-    signal(SIGXCPU, sigterm_handler);
-#endif
-}
+__thread FilterGraph **filtergraphs;
+__thread int        nb_filtergraphs;
 
 static int decode_interrupt_cb(void *ctx)
 {
-    return received_nb_signals > 1;
+    return gavctx->quit;
 }
 
 const AVIOInterruptCB int_cb = { decode_interrupt_cb, NULL };
 
-static void avconv_cleanup(int ret)
+void avconv_cleanup(int ret)
 {
     int i, j;
 
@@ -224,13 +200,14 @@ static void avconv_cleanup(int ret)
 
     uninit_opts();
 
-    avformat_network_deinit();
+		avconvCtxDestroy(gavctx);
+    //avformat_network_deinit();
 
-    if (received_sigterm) {
-        av_log(NULL, AV_LOG_INFO, "Received signal %d: terminating.\n",
-               (int) received_sigterm);
-        exit (255);
-    }
+    //if (received_sigterm) {
+    //    av_log(NULL, AV_LOG_INFO, "Received signal %d: terminating.\n",
+    //           (int) received_sigterm);
+    //    exit (255);
+    //}
 }
 
 void assert_avoptions(AVDictionary *m)
@@ -439,7 +416,7 @@ static void do_subtitle_out(AVFormatContext *s,
                             AVSubtitle *sub,
                             int64_t pts)
 {
-    static uint8_t *subtitle_out = NULL;
+    static __thread uint8_t *subtitle_out = NULL;
     int subtitle_out_max_size = 1024 * 1024;
     int subtitle_out_size, nb, i;
     AVCodecContext *enc;
@@ -722,7 +699,7 @@ static int poll_filters(void)
 {
     int i, ret = 0;
 
-    while (ret >= 0 && !received_sigterm) {
+    while (ret >= 0 && !gavctx->quit) {
         OutputStream *ost = NULL;
         int64_t min_pts = INT64_MAX;
 
@@ -868,8 +845,8 @@ static void print_report(int is_last_report, int64_t timer_start)
     AVCodecContext *enc;
     int frame_number, vid, i;
     double bitrate, ti1, pts;
-    static int64_t last_time = -1;
-    static int qp_histogram[52];
+    static __thread int64_t last_time = -1;
+    static __thread int qp_histogram[52];
 
     if (!print_stats && !is_last_report)
         return;
@@ -966,7 +943,7 @@ static void print_report(int is_last_report, int64_t timer_start)
     snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf),
             "size=%8.0fkB time=%0.2f bitrate=%6.1fkbits/s",
             (double)total_size / 1024, ti1, bitrate);
-
+						
     if (nb_frames_drop)
         snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), " drop=%d",
                  nb_frames_drop);
@@ -1035,6 +1012,7 @@ static void flush_encoders(void)
                     break;
                 }
                 av_packet_rescale_ts(&pkt, enc->time_base, ost->st->time_base);
+								
                 write_frame(os, &pkt, ost);
             }
 
@@ -1372,6 +1350,7 @@ static int process_input_packet(InputStream *ist, const AVPacket *pkt)
     } else {
         avpkt = *pkt;
     }
+		ist->last_pts = pkt->pts;
 
     if (pkt->dts != AV_NOPTS_VALUE)
         ist->next_dts = ist->last_dts = av_rescale_q(pkt->dts, ist->st->time_base, AV_TIME_BASE_Q);
@@ -1416,6 +1395,7 @@ static int process_input_packet(InputStream *ist, const AVPacket *pkt)
 
         if (ret < 0)
             return ret;
+
         // touch data and size only if not EOF
         if (pkt) {
             avpkt.data += ret;
@@ -1444,6 +1424,7 @@ static int process_input_packet(InputStream *ist, const AVPacket *pkt)
             break;
         }
     }
+
     for (i = 0; pkt && i < nb_output_streams; i++) {
         OutputStream *ost = output_streams[i];
 
@@ -2466,7 +2447,9 @@ static int transcode(void)
         goto fail;
 
     av_log(NULL, AV_LOG_INFO, "Press ctrl-c to stop encoding\n");
-    term_init();
+
+		// don't modify process's sighandler
+    // term_init();
 
     timer_start = av_gettime();
 
@@ -2475,8 +2458,9 @@ static int transcode(void)
         goto fail;
 #endif
 
-    while (!received_sigterm) {
-        /* check if there's any stream where output is still needed */
+    while (!gavctx->quit) {
+
+      /* check if there's any stream where output is still needed */
         if (!need_output()) {
             av_log(NULL, AV_LOG_VERBOSE, "No more output streams to write to, finishing.\n");
             break;
@@ -2514,8 +2498,6 @@ static int transcode(void)
     }
     poll_filters();
     flush_encoders();
-
-    term_exit();
 
     /* write the trailer if needed and close file */
     for (i = 0; i < nb_output_files; i++) {
@@ -2605,52 +2587,102 @@ static int64_t getmaxrss(void)
 #endif
 }
 
-int main(int argc, char **argv)
-{
-    int ret;
-    int64_t ti;
+void avconv_conv(int argc, char **argv) {
+	int ret;
+	int64_t ti;
 
-    register_exit(avconv_cleanup);
+	/* parse options and open all input/output files */
+	ret = avconv_parse_options(argc, argv);
+	if (ret < 0)
+		exit_program(1);
 
-    av_log_set_flags(AV_LOG_SKIP_REPEATED);
-    parse_loglevel(argc, argv, options);
+	if (nb_output_files <= 0 && nb_input_files == 0) {
+		show_usage();
+		av_log(NULL, AV_LOG_WARNING, "Use -h to get full help or, even better, run 'man %s'\n", program_name);
+		exit_program(1);
+	}
 
-    avcodec_register_all();
-#if CONFIG_AVDEVICE
-    avdevice_register_all();
-#endif
-    avfilter_register_all();
-    av_register_all();
-    avformat_network_init();
+	/* file converter / grab */
+	if (nb_output_files <= 0) {
+		dbp("At least one output file must be specified\n");
+		exit_program(1);
+	}
 
-    show_banner();
+	ti = getutime();
+	if (transcode() < 0)
+		exit_program(1);
+	ti = getutime() - ti;
+	if (do_benchmark) {
+		int maxrss = getmaxrss() / 1024;
+		dbp("bench: utime=%0.3fs maxrss=%ikB\n", ti / 1000000.0, maxrss);
+	}
 
-    /* parse options and open all input/output files */
-    ret = avconv_parse_options(argc, argv);
-    if (ret < 0)
-        exit_program(1);
-
-    if (nb_output_files <= 0 && nb_input_files == 0) {
-        show_usage();
-        av_log(NULL, AV_LOG_WARNING, "Use -h to get full help or, even better, run 'man %s'\n", program_name);
-        exit_program(1);
-    }
-
-    /* file converter / grab */
-    if (nb_output_files <= 0) {
-        fprintf(stderr, "At least one output file must be specified\n");
-        exit_program(1);
-    }
-
-    ti = getutime();
-    if (transcode() < 0)
-        exit_program(1);
-    ti = getutime() - ti;
-    if (do_benchmark) {
-        int maxrss = getmaxrss() / 1024;
-        printf("bench: utime=%0.3fs maxrss=%ikB\n", ti / 1000000.0, maxrss);
-    }
-
-    exit_program(0);
-    return 0;
+	exit_program(0);
 }
+
+int main(int argc, char **argv) {
+	int fd_r, fd_w;
+	int turn = 0;
+
+	avconvNewFromArgv(&fd_r, &fd_w, argc, argv);
+
+	for (;;) {
+		avconvCmd c;
+		avconvRequest req = {};
+		int n;
+		avconvFrame *frame;
+
+		// read frame
+		req.frame = 1;
+
+		// probe every 8 turns
+		req.probe = (turn % 8) == 0;
+
+		// free all buffers every 4 turns
+		// after free frame->buf no longer invalid
+		req.free = (turn % 4) == 0;
+
+		c = avconvMakeCmd(AVCONV_REQUEST, &req, sizeof(req));
+		write(fd_w, &c, sizeof(c));
+
+		if (req.probe) {
+			avconvProbeInfo *pi;
+
+			for (;;) {
+				n = read(fd_r, &c, sizeof(c));
+				if (n != sizeof(c))
+					goto out;
+				if (c.type == AVCONV_PROBE_END)
+					break;
+
+				pi = (avconvProbeInfo *)c.buf;
+				if (pi->idx == 0)
+					fprintf(stderr, "probe i=%d pos=%f dur=%f\n", 
+							pi->idx, pi->position, pi->duration);
+			}
+		}
+
+		if (req.frame) {
+			n = read(fd_r, &c, sizeof(c));
+			if (n != sizeof(c))
+				goto out;
+
+			frame = (avconvFrame *)c.buf;
+			fprintf(stderr, "frame size=%d\n", frame->size);
+			// handle with frame->buf
+			// ...
+		}
+
+		turn++;
+	}
+
+out:
+	fprintf(stderr, "closed\n");
+	close(fd_r);
+	close(fd_w);
+
+	sleep(1);
+
+	return 0;
+}
+

@@ -55,8 +55,8 @@
 #include <sys/resource.h>
 #endif
 
-struct SwsContext *sws_opts;
-AVDictionary *format_opts, *codec_opts, *resample_opts;
+__thread struct SwsContext *sws_opts;
+__thread AVDictionary *format_opts, *codec_opts, *resample_opts;
 
 static const int this_year = 2014;
 
@@ -84,19 +84,8 @@ void log_callback_help(void *ptr, int level, const char *fmt, va_list vl)
     vfprintf(stdout, fmt, vl);
 }
 
-static void (*program_exit)(int ret);
-
-void register_exit(void (*cb)(int ret))
-{
-    program_exit = cb;
-}
-
-void exit_program(int ret)
-{
-    if (program_exit)
-        program_exit(ret);
-
-    exit(ret);
+void exit_program(int r) {
+	longjmp(program_jmpbuf, r+255);
 }
 
 double parse_number_or_die(const char *context, const char *numstr, int type,
@@ -191,8 +180,8 @@ static const OptionDef *find_option(const OptionDef *po, const char *name)
 #include <windows.h>
 #include <shellapi.h>
 /* Will be leaked on exit */
-static char** win32_argv_utf8 = NULL;
-static int win32_argc = 0;
+static __thread char** win32_argv_utf8 = NULL;
+static __thread int win32_argc = 0;
 
 /**
  * Prepare command line arguments for executable.
@@ -765,7 +754,7 @@ void print_error(const char *filename, int err)
     av_log(NULL, AV_LOG_ERROR, "%s: %s\n", filename, errbuf_ptr);
 }
 
-static int warned_cfg = 0;
+static __thread int warned_cfg = 0;
 
 #define INDENT        1
 #define SHOW_VERSION  2

@@ -23,6 +23,7 @@
 #define LIBAV_CMDUTILS_H
 
 #include <stdint.h>
+#include <setjmp.h>
 
 #include "libavcodec/avcodec.h"
 #include "libavfilter/avfilter.h"
@@ -39,15 +40,17 @@ extern const char program_name[];
  */
 extern const int program_birth_year;
 
-extern AVCodecContext *avcodec_opts[AVMEDIA_TYPE_NB];
-extern AVFormatContext *avformat_opts;
-extern struct SwsContext *sws_opts;
-extern AVDictionary *format_opts, *codec_opts, *resample_opts;
+extern __thread AVCodecContext *avcodec_opts[AVMEDIA_TYPE_NB];
+extern __thread AVFormatContext *avformat_opts;
+extern __thread struct SwsContext *sws_opts;
+extern __thread AVDictionary *format_opts, *codec_opts, *resample_opts;
 
 /**
  * Register a program-specific cleanup routine.
  */
-void register_exit(void (*cb)(int ret));
+int set_exit(void);
+
+extern __thread jmp_buf program_jmpbuf;
 
 /**
  * Wraps exit with a program-specific cleanup routine.
@@ -554,5 +557,7 @@ const char *media_type_string(enum AVMediaType media_type);
 #define GET_CH_LAYOUT_DESC(ch_layout)\
     char name[128];\
     av_get_channel_layout_string(name, sizeof(name), 0, ch_layout);
+
+void options_varinit(void);
 
 #endif /* LIBAV_CMDUTILS_H */

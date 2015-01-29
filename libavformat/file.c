@@ -167,6 +167,7 @@ static int pipe_open(URLContext *h, const char *filename, int flags)
     av_strstart(filename, "pipe:", &filename);
 
     fd = strtol(filename, &final, 10);
+
     if((filename == final) || *final ) {/* No digits found, or something like 10ab */
         if (flags & AVIO_FLAG_WRITE) {
             fd = 1;
