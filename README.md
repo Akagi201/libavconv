@@ -3,7 +3,7 @@ Libavconv
 
 Libavconv is C library functions like `avconv` command.
 
- * Easy to use
+ * Easy to use and integrate into C.
  * Zero-copy (no fork)
  * Simple but useful buffer control
 
@@ -80,7 +80,7 @@ out:
 ```bash
 
 # use % instead of filename libavconv to handle frames in code 
-$ ./test -i in.mp3 -f s16le %
+$ ./test -i in.mp3 -f s16le -ar 44100 -ac 2 %
 
 ...
 probe i=0 pos=9.195102 dur=10.031020
