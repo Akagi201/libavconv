@@ -60,3 +60,5 @@
 /tools/probetest
 /tools/qt-faststart
 /tools/trasher
+/.cproject
+/.project

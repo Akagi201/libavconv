@@ -177,7 +177,7 @@ static URLProtocol urlprot_callback = {
 };
 
 void *my_malloc(size_t size);
-void *my_memalign(size_t align, size_t size);
+//void *my_memalign(size_t align, size_t size);
 int   my_posix_memalign(void **ptr, size_t align, size_t size);
 void *my_realloc(void *ptr, size_t size);
 void  my_free(void *ptr);
@@ -187,6 +187,7 @@ void *my_malloc(size_t size) {
 	return malloc(size);
 }
 
+#if 0
 void *my_memalign(size_t align, size_t size) {
 	return memalign(align, size);
 }
@@ -194,6 +195,7 @@ void *my_memalign(size_t align, size_t size) {
 int my_posix_memalign(void **ptr, size_t align, size_t size) {
 	return posix_memalign(ptr, align, size);
 }
+#endif
 
 void *my_realloc(void *ptr, size_t size) {
 	//fprintf(stderr, "realloc %p %ld\n", ptr, size);
